@@ -10,10 +10,19 @@ const Schema = mongoose.Schema;
  */
 
 const UserSchema = new Schema({
-  name: { type: String, default: '' },
-  email: { type: String, default: '' },
-  hashed_password: { type: String, default: '' },
-  salt: { type: String, default: '' }
+    user_id: {
+        type: String,
+        required: true,
+        unique: true
+    },
+    vip_level: {
+        type: Number,
+        min: 0,
+        max: 5
+    },
+
+    product_total_amount: { type: Number, default: 0 },
+    name: String
 });
 
 /**
@@ -39,4 +48,4 @@ UserSchema.static({});
  * Register
  */
 
-mongoose.model('User', UserSchema);
+module.exports = mongoose.model('User', UserSchema);
