@@ -14,10 +14,7 @@ const RelationSchema = new Schema({
         type: String,
         required: true
     },
-    invitor_id: {
-        type: String,
-        required: true
-    },
+    invitor_id: String,
 
     path: String
 });

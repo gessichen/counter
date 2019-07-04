@@ -17,11 +17,15 @@ const join = require('path').join;
 const express = require('express');
 const mongoose = require('mongoose');
 const passport = require('passport');
-var bodyParser = require('body-parser')
+const bodyParser = require('body-parser')
+const Promise = require("bluebird");
+
+
 const config = require('./config');
 const userModel = require("./app/models/user");
 const productModel = require("./app/models/product");
 const relationModel = require("./app/models/relation");
+const profitModel = require("./app/models/profit");
 
 const models = join(__dirname, 'app/models');
 const port = process.env.PORT || 3000;
@@ -95,10 +99,9 @@ app.post('/user', function (req, res) {
     newUser.save((err) => {
         if(err) {
             console.log(err);
-            return;
+            res.status(200).send("bad request");
         }
 
-        console.log(newUser);
     })
 
     res.status(200).send(newUser);
@@ -185,4 +188,114 @@ app.post("/buy", function(req, res) {
         })
     })
 })
+
+app.post("/relate", function(req, res) {
+
+    let userId = req.body.user_id;
+    let invitorId = req.body.invitor_id;
+
+    //console.log(req.body);
+
+    return Promise.resolve(userModel.findOne({ user_id: userId }).exec())
+    .then((user) => {
+        if(user == null) {
+            res.send("bad request");
+        }
+        
+        // get invitor path
+        if(typeof(invitorId) === "undefined" || invitorId === null || invitorId === ""){
+            invitorId = "";
+            return "";
+        } else {
+            return Promise.resolve(relationModel.findOne({ user_id: invitorId }).exec())
+            .then((invitor) => {
+                return invitor.path;
+            })
+        }
+    })
+    .then((invitorPath) => {
+        let userPath = invitorPath + "/" + userId;
+
+        let newRelation = new relationModel({
+            user_id:    userId,
+            invitor_id:    invitorId,
+            path:       userPath
+        })
+
+        newRelation.save((err) => {
+            if(err) {
+                console.log(err);
+
+                res.send("bad request");
+            }
+
+            res.send(newRelation);
+        })
+    })
+})
+
+app.post("/profit", (req, res) => {
+    let user = req.body.user_id;
+
+    return generatetionUserProfitAsync(user)
+    .then(() => {
+        res.send();
+    })
+})
+
+function parentAddProfitAsync(staticSum, parentId, level) {
+
+    let profitPercents = [0.5, 0.3, 0.1, 0.05, 0.01, 0.01, 0.01, 0.01, 0.01];
+    return Promise.resolve(relationModel.count({ invitor_id: parentId }).exec())
+    .then(count => {
+        if(count >= level) {
+            let options = { upsert: true, new: true, setDefaultsOnInsert: true };
+            
+            // Find the document
+            return Promise.resolve(profitModel.findOneAndUpdate({ user_id: parentId }, { user_id: parentId, "$inc": { generate_profit: staticSum * profitPercents[level - 1] } }, options).exec()); 
+        } else {
+            return;
+        }
+    })
+}
+
+
+function generatetionUserProfitAsync(userId) {
+
+    let staticSum = 0 
+    return Promise.resolve(productModel.find({ user_id: userId }).exec())
+    .then((products) => {
+
+        if(products.length > 0) {
+            for(let i = 0; i < products.length; i++) {
+                staticSum += products[i].static_interest_daily;
+            }
+        }
+
+        return relationModel.findOne({ user_id: userId })
+    })
+    .then((userRelation) => {
+    
+        let path = userRelation.path;
+        let nodes = path.split("/");
+
+        let promArr = [];
+        let counter = 0;
+        for(let i = nodes.length - 2; i > 0; i--) {
+            promArr.push(parentAddProfitAsync(staticSum, nodes[i], counter + 1))
+            counter ++;
+            if(counter === 0) break;
+        }
+
+        return Promise.all(promArr);
+    })
+    .then(() => {
+        let options = { upsert: true, new: true, setDefaultsOnInsert: true };
+        // Find the document
+        return Promise.resolve(profitModel.findOneAndUpdate({ user_id: userId }, { user_id: userId, "$inc": { static_profit: staticSum } }, options).exec());
+    })
+    .then(() => {
+        return;
+    })
+}
 
